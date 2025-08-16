@@ -5,6 +5,7 @@ Favorites router - handles user favorite hadiths
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from sqlalchemy import select, insert, delete, update, func, and_
 from sqlalchemy.exc import IntegrityError
+from typing import Optional
 
 from ..database import database, favorites_table, hadiths_table, collections_table, chapters_table
 from ..models import (
