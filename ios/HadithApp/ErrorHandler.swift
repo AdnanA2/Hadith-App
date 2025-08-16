@@ -10,6 +10,8 @@ class ErrorHandler: ObservableObject {
     @Published var isShowingError = false
     
     private var cancellables = Set<AnyCancellable>()
+    private let logger = Logger.shared
+    private let monitoringService = MonitoringService.shared
     
     private init() {
         setupErrorObservation()
@@ -28,6 +30,9 @@ class ErrorHandler: ObservableObject {
         // Log the error
         logError(displayableError)
         
+        // Track error for analytics
+        monitoringService.trackError(error, context: context)
+        
         // Show to user if requested
         if showToUser {
             DispatchQueue.main.async {
@@ -35,9 +40,6 @@ class ErrorHandler: ObservableObject {
                 self.isShowingError = true
             }
         }
-        
-        // Send to analytics/crash reporting
-        sendErrorToAnalytics(displayableError)
     }
     
     /// Handle multiple errors (e.g., from parallel network requests)
@@ -48,11 +50,11 @@ class ErrorHandler: ObservableObject {
     func handle(_ errors: [Error], showToUser: Bool = true, context: String? = nil) {
         guard !errors.isEmpty else { return }
         
-        // Log all errors
+        // Log and track all errors
         errors.forEach { error in
             let displayableError = createDisplayableError(from: error, context: context)
             logError(displayableError)
-            sendErrorToAnalytics(displayableError)
+            monitoringService.trackError(error, context: context)
         }
         
         // Show the most severe error to user
@@ -98,6 +100,7 @@ class ErrorHandler: ObservableObject {
         )
         
         logError(displayableError)
+        monitoringService.trackError(error, context: "authentication")
         sendErrorToAnalytics(displayableError)
         
         DispatchQueue.main.async {
@@ -203,68 +206,15 @@ class ErrorHandler: ObservableObject {
     }
     
     private func logError(_ error: DisplayableError) {
-        let timestamp = DateFormatter.logTimestamp.string(from: Date())
-        let severityIcon = error.severity.icon
-        
-        let logMessage = """
-        \(severityIcon) [\(timestamp)] \(error.title)
-        Message: \(error.message)
-        Severity: \(error.severity.rawValue)
-        Original Error: \(String(describing: error.originalError))
-        """
-        
-        if Environment.isDebug {
-            print(logMessage)
-        }
-        
-        // In production, you might want to write to a log file
-        // or send to a logging service
-        writeToLogFile(logMessage)
-    }
-    
-    private func writeToLogFile(_ message: String) {
-        guard let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            return
-        }
-        
-        let logFileURL = documentsPath.appendingPathComponent("error_log.txt")
-        let timestampedMessage = message + "\n\n"
-        
-        do {
-            if FileManager.default.fileExists(atPath: logFileURL.path) {
-                let fileHandle = try FileHandle(forWritingTo: logFileURL)
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(timestampedMessage.data(using: .utf8) ?? Data())
-                fileHandle.closeFile()
-            } else {
-                try timestampedMessage.write(to: logFileURL, atomically: true, encoding: .utf8)
-            }
-        } catch {
-            print("Failed to write to log file: \(error)")
+        logger.error("\(error.title): \(error.message)")
+        if let originalError = error.originalError {
+            logger.error("Original error: \(originalError)")
         }
     }
     
-    private func sendErrorToAnalytics(_ error: DisplayableError) {
-        // In a real app, you would send this to your analytics service
-        // e.g., Firebase Analytics, Mixpanel, etc.
-        
-        let analyticsData: [String: Any] = [
-            "error_title": error.title,
-            "error_message": error.message,
-            "error_severity": error.severity.rawValue,
-            "error_type": String(describing: type(of: error.originalError)),
-            "timestamp": Date().timeIntervalSince1970,
-            "app_version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "unknown",
-            "ios_version": UIDevice.current.systemVersion
-        ]
-        
-        if Environment.isDebug {
-            print("📊 Analytics: Error reported - \(analyticsData)")
-        }
-        
-        // TODO: Implement actual analytics reporting
-        // Analytics.logEvent("error_occurred", parameters: analyticsData)
-    }
+
+    
+
     
     private func errorSeverity(_ error: Error) -> Int {
         switch error {

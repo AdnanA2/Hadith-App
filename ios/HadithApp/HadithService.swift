@@ -2,12 +2,12 @@ import Foundation
 import Combine
 
 /// Service for managing hadith-related API operations
-class HadithService {
+class HadithService: BaseService {
     static let shared = HadithService()
     
-    private let apiService = APIService.shared
-    
     private init() {}
+    
+    typealias ServiceError = HadithServiceError
     
     // MARK: - Hadith Endpoints
     
@@ -19,9 +19,12 @@ class HadithService {
     ) -> AnyPublisher<HadithsResponse, HadithServiceError> {
         let queryItems = searchParams.toQueryItems()
         
-        return apiService.get<HadithsResponse>(endpoint: "/hadiths", queryItems: queryItems)
-            .mapError { HadithServiceError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+        return handleResponse(
+            apiService.get<HadithsResponse>(endpoint: "/hadiths", queryItems: queryItems),
+            context: "Get hadiths",
+            errorMapper: HadithServiceError.from
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Get hadiths with individual parameters (convenience method)
@@ -66,9 +69,12 @@ class HadithService {
             queryItems.append(URLQueryItem(name: "date_param", value: date))
         }
         
-        return apiService.get<DailyHadithResponse>(endpoint: "/hadiths/daily", queryItems: queryItems)
-            .mapError { HadithServiceError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+        return handleResponse(
+            apiService.get<DailyHadithResponse>(endpoint: "/hadiths/daily", queryItems: queryItems),
+            context: "Get daily hadith",
+            errorMapper: HadithServiceError.from
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Get a random hadith
@@ -96,9 +102,12 @@ class HadithService {
             queryItems.append(URLQueryItem(name: "exclude_favorites", value: "true"))
         }
         
-        return apiService.get<HadithResponse>(endpoint: "/hadiths/random", queryItems: queryItems)
-            .mapError { HadithServiceError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+        return handleResponse(
+            apiService.get<HadithResponse>(endpoint: "/hadiths/random", queryItems: queryItems),
+            context: "Get random hadith",
+            errorMapper: HadithServiceError.from
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Get a specific hadith by ID

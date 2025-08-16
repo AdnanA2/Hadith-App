@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 /// Manages user authentication state and operations
-class AuthenticationManager: ObservableObject {
+class AuthenticationManager: ObservableObject, BaseService {
     static let shared = AuthenticationManager()
     
     // MARK: - Published Properties
@@ -14,9 +14,10 @@ class AuthenticationManager: ObservableObject {
     
     // MARK: - Private Properties
     
-    private let apiService = APIService.shared
     private let keychain = KeychainManager.shared
     private var cancellables = Set<AnyCancellable>()
+    
+    typealias ServiceError = AuthError
     
     // MARK: - Initialization
     
@@ -69,25 +70,28 @@ class AuthenticationManager: ObservableObject {
         isLoading = true
         authError = nil
         
-        return apiService.post<SignupRequest, AuthResponse>(endpoint: "/auth/signup", body: signupData)
-            .handleEvents(
-                receiveOutput: { [weak self] response in
-                    self?.handleSuccessfulAuth(response)
-                },
-                receiveCompletion: { [weak self] completion in
+        return handleAuthResponse(
+            apiService.post<SignupRequest, AuthResponse>(endpoint: "/auth/signup", body: signupData),
+            context: "User signup",
+            errorMapper: AuthError.from
+        )
+        .handleEvents(
+            receiveOutput: { [weak self] response in
+                self?.handleSuccessfulAuth(response)
+            },
+            receiveCompletion: { [weak self] completion in
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                }
+                
+                if case .failure(let error) = completion {
                     DispatchQueue.main.async {
-                        self?.isLoading = false
-                    }
-                    
-                    if case .failure(let error) = completion {
-                        DispatchQueue.main.async {
-                            self?.authError = AuthError.from(apiError: error)
-                        }
+                        self?.authError = error
                     }
                 }
-            )
-            .mapError { AuthError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+            }
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Log in an existing user
@@ -101,25 +105,28 @@ class AuthenticationManager: ObservableObject {
         isLoading = true
         authError = nil
         
-        return apiService.post<LoginRequest, AuthResponse>(endpoint: "/auth/login", body: loginData)
-            .handleEvents(
-                receiveOutput: { [weak self] response in
-                    self?.handleSuccessfulAuth(response)
-                },
-                receiveCompletion: { [weak self] completion in
+        return handleAuthResponse(
+            apiService.post<LoginRequest, AuthResponse>(endpoint: "/auth/login", body: loginData),
+            context: "User login",
+            errorMapper: AuthError.from
+        )
+        .handleEvents(
+            receiveOutput: { [weak self] response in
+                self?.handleSuccessfulAuth(response)
+            },
+            receiveCompletion: { [weak self] completion in
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                }
+                
+                if case .failure(let error) = completion {
                     DispatchQueue.main.async {
-                        self?.isLoading = false
-                    }
-                    
-                    if case .failure(let error) = completion {
-                        DispatchQueue.main.async {
-                            self?.authError = AuthError.from(apiError: error)
-                        }
+                        self?.authError = error
                     }
                 }
-            )
-            .mapError { AuthError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+            }
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Refresh the current access token
@@ -130,14 +137,17 @@ class AuthenticationManager: ObservableObject {
                 .eraseToAnyPublisher()
         }
         
-        return apiService.post<EmptyRequest, AuthResponse>(endpoint: "/auth/refresh", body: EmptyRequest())
-            .handleEvents(
-                receiveOutput: { [weak self] response in
-                    self?.handleSuccessfulAuth(response)
-                }
-            )
-            .mapError { AuthError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+        return handleAuthResponse(
+            apiService.post<EmptyRequest, AuthResponse>(endpoint: "/auth/refresh", body: EmptyRequest()),
+            context: "Token refresh",
+            errorMapper: AuthError.from
+        )
+        .handleEvents(
+            receiveOutput: { [weak self] response in
+                self?.handleSuccessfulAuth(response)
+            }
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Update current user profile
@@ -149,16 +159,19 @@ class AuthenticationManager: ObservableObject {
                 .eraseToAnyPublisher()
         }
         
-        return apiService.put<UserUpdate, UserResponse>(endpoint: "/auth/me", body: userUpdate)
-            .handleEvents(
-                receiveOutput: { [weak self] response in
-                    DispatchQueue.main.async {
-                        self?.currentUser = response.data
-                    }
+        return handleResponse(
+            apiService.put<UserUpdate, UserResponse>(endpoint: "/auth/me", body: userUpdate),
+            context: "Profile update",
+            errorMapper: AuthError.from
+        )
+        .handleEvents(
+            receiveOutput: { [weak self] response in
+                DispatchQueue.main.async {
+                    self?.currentUser = response.data
                 }
-            )
-            .mapError { AuthError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+            }
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Get current user profile
@@ -169,16 +182,19 @@ class AuthenticationManager: ObservableObject {
                 .eraseToAnyPublisher()
         }
         
-        return apiService.get<UserResponse>(endpoint: "/auth/me")
-            .handleEvents(
-                receiveOutput: { [weak self] response in
-                    DispatchQueue.main.async {
-                        self?.currentUser = response.data
-                    }
+        return handleResponse(
+            apiService.get<UserResponse>(endpoint: "/auth/me"),
+            context: "Get current user",
+            errorMapper: AuthError.from
+        )
+        .handleEvents(
+            receiveOutput: { [weak self] response in
+                DispatchQueue.main.async {
+                    self?.currentUser = response.data
                 }
-            )
-            .mapError { AuthError.from(apiError: $0) }
-            .eraseToAnyPublisher()
+            }
+        )
+        .eraseToAnyPublisher()
     }
     
     /// Log out the current user
