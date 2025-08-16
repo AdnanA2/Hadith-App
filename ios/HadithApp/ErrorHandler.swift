@@ -6,7 +6,7 @@ import UIKit
 class ErrorHandler: ObservableObject {
     static let shared = ErrorHandler()
     
-    @Published var currentError: AppError?
+    @Published var currentError: DisplayableError?
     @Published var isShowingError = false
     
     private var cancellables = Set<AnyCancellable>()
@@ -15,35 +15,60 @@ class ErrorHandler: ObservableObject {
         setupErrorObservation()
     }
     
-    // MARK: - Error Handling Methods
+    // MARK: - Public Methods
     
-    /// Handle an error and decide how to present it to the user
+    /// Handle an error and optionally show it to the user
     /// - Parameters:
     ///   - error: The error to handle
+    ///   - showToUser: Whether to display the error to the user
     ///   - context: Additional context about where the error occurred
-    ///   - shouldDisplay: Whether to automatically show the error to the user
-    func handle(_ error: Error, context: String? = nil, shouldDisplay: Bool = true) {
-        let appError = AppError.from(error: error, context: context)
+    func handle(_ error: Error, showToUser: Bool = true, context: String? = nil) {
+        let displayableError = createDisplayableError(from: error, context: context)
         
         // Log the error
-        logError(appError)
+        logError(displayableError)
         
-        // Handle authentication errors specially
-        if appError.isAuthenticationError {
-            handleAuthenticationError(appError)
-            return
-        }
-        
-        // Display error to user if requested
-        if shouldDisplay {
+        // Show to user if requested
+        if showToUser {
             DispatchQueue.main.async {
-                self.currentError = appError
+                self.currentError = displayableError
                 self.isShowingError = true
             }
         }
         
-        // Send error analytics if configured
-        sendErrorAnalytics(appError)
+        // Send to analytics/crash reporting
+        sendErrorToAnalytics(displayableError)
+    }
+    
+    /// Handle multiple errors (e.g., from parallel network requests)
+    /// - Parameters:
+    ///   - errors: Array of errors to handle
+    ///   - showToUser: Whether to display errors to the user
+    ///   - context: Additional context about where the errors occurred
+    func handle(_ errors: [Error], showToUser: Bool = true, context: String? = nil) {
+        guard !errors.isEmpty else { return }
+        
+        // Log all errors
+        errors.forEach { error in
+            let displayableError = createDisplayableError(from: error, context: context)
+            logError(displayableError)
+            sendErrorToAnalytics(displayableError)
+        }
+        
+        // Show the most severe error to user
+        if showToUser {
+            let mostSevere = errors.max { error1, error2 in
+                errorSeverity(error1) < errorSeverity(error2)
+            }
+            
+            if let error = mostSevere {
+                let displayableError = createDisplayableError(from: error, context: context)
+                DispatchQueue.main.async {
+                    self.currentError = displayableError
+                    self.isShowingError = true
+                }
+            }
+        }
     }
     
     /// Clear the current error
@@ -54,449 +79,369 @@ class ErrorHandler: ObservableObject {
         }
     }
     
-    /// Handle network connectivity issues
-    func handleNetworkError(_ error: Error) {
-        let networkError = AppError.networkError(error.localizedDescription)
+    /// Handle authentication errors specifically
+    /// - Parameter error: The authentication error
+    func handleAuthError(_ error: AuthError) {
+        let displayableError = DisplayableError(
+            title: "Authentication Error",
+            message: error.localizedDescription,
+            severity: .high,
+            actionTitle: error.id == "not_authenticated" ? "Log In" : "Try Again",
+            action: { [weak self] in
+                if error.id == "not_authenticated" {
+                    self?.showLoginScreen()
+                } else {
+                    self?.clearError()
+                }
+            },
+            originalError: error
+        )
         
-        // Check if device is offline
-        if isDeviceOffline() {
-            let offlineError = AppError.offline
-            handle(offlineError, context: "Network connectivity check")
-        } else {
-            handle(networkError, context: "Network request")
-        }
-    }
-    
-    /// Handle authentication-related errors
-    private func handleAuthenticationError(_ error: AppError) {
-        // Log out user if authentication fails
-        AuthenticationManager.shared.logout()
+        logError(displayableError)
+        sendErrorToAnalytics(displayableError)
         
-        // Show authentication error
         DispatchQueue.main.async {
-            self.currentError = error
+            self.currentError = displayableError
             self.isShowingError = true
         }
     }
     
-    // MARK: - Error Recovery
-    
-    /// Attempt to recover from an error automatically
-    /// - Parameter error: The error to recover from
-    /// - Returns: True if recovery was attempted, false otherwise
-    func attemptRecovery(from error: AppError) -> Bool {
-        switch error {
-        case .authenticationError:
-            // Try to refresh token
-            AuthenticationManager.shared.refreshToken()
-                .sink(
-                    receiveCompletion: { _ in },
-                    receiveValue: { _ in
-                        self.clearError()
-                    }
-                )
-                .store(in: &cancellables)
-            return true
-            
-        case .networkError, .serverError:
-            // Could implement retry logic here
-            return false
-            
-        case .offline:
-            // Monitor network status and retry when online
-            monitorNetworkStatus()
-            return true
-            
-        default:
-            return false
+    /// Handle network connectivity errors
+    /// - Parameter error: The network error
+    func handleNetworkError(_ error: Error) {
+        let isOffline = isNetworkUnavailable(error)
+        
+        let displayableError = DisplayableError(
+            title: isOffline ? "No Internet Connection" : "Network Error",
+            message: isOffline ? "Please check your internet connection and try again." : error.localizedDescription,
+            severity: isOffline ? .medium : .high,
+            actionTitle: "Retry",
+            action: { [weak self] in
+                self?.clearError()
+                // Could trigger a retry mechanism here
+            },
+            originalError: error
+        )
+        
+        logError(displayableError)
+        
+        DispatchQueue.main.async {
+            self.currentError = displayableError
+            self.isShowingError = true
         }
     }
     
     // MARK: - Private Methods
     
     private func setupErrorObservation() {
-        // Observe authentication errors
+        // Observe authentication manager errors
         AuthenticationManager.shared.$authError
             .compactMap { $0 }
-            .sink { [weak self] authError in
-                let appError = AppError.from(error: authError, context: "Authentication")
-                self?.handle(appError)
+            .sink { [weak self] error in
+                self?.handleAuthError(error)
             }
             .store(in: &cancellables)
     }
     
-    private func logError(_ error: AppError) {
-        if Environment.isDebug {
-            print("🚨 Error: \(error.title)")
-            print("📝 Description: \(error.message)")
-            if let context = error.context {
-                print("🔍 Context: \(context)")
-            }
-            if let suggestion = error.recoverySuggestion {
-                print("💡 Suggestion: \(suggestion)")
-            }
-        }
+    private func createDisplayableError(from error: Error, context: String?) -> DisplayableError {
+        var title = "Error"
+        var message = error.localizedDescription
+        var severity = ErrorSeverity.medium
+        var actionTitle = "OK"
+        var action: (() -> Void)? = { [weak self] in self?.clearError() }
         
-        // In production, you might want to send this to a logging service
-        // like Firebase Crashlytics, Sentry, etc.
-    }
-    
-    private func sendErrorAnalytics(_ error: AppError) {
-        // Implementation for sending error analytics
-        // This could integrate with Firebase Analytics, Mixpanel, etc.
-        
-        #if DEBUG
-        print("📊 Analytics: Error reported - \(error.analyticsName)")
-        #endif
-    }
-    
-    private func isDeviceOffline() -> Bool {
-        // Simple network reachability check
-        // In a real app, you might want to use Network framework or Reachability
-        return false // Placeholder
-    }
-    
-    private func monitorNetworkStatus() {
-        // Monitor network status and clear offline error when connection is restored
-        // This would typically use Network framework
-    }
-}
-
-// MARK: - AppError
-
-enum AppError: Error, LocalizedError, Identifiable {
-    case authenticationError(String? = nil)
-    case authorizationError(String? = nil)
-    case networkError(String)
-    case serverError(String)
-    case validationError(String, [String]?)
-    case notFound(String)
-    case offline
-    case dataCorruption(String)
-    case unknown(String)
-    
-    // Custom errors with context
-    case customError(title: String, message: String, context: String?)
-    
-    var id: String {
-        switch self {
-        case .authenticationError:
-            return "authentication_error"
-        case .authorizationError:
-            return "authorization_error"
-        case .networkError:
-            return "network_error"
-        case .serverError:
-            return "server_error"
-        case .validationError:
-            return "validation_error"
-        case .notFound:
-            return "not_found"
-        case .offline:
-            return "offline"
-        case .dataCorruption:
-            return "data_corruption"
-        case .unknown:
-            return "unknown_error"
-        case .customError:
-            return "custom_error"
-        }
-    }
-    
-    var title: String {
-        switch self {
-        case .authenticationError:
-            return "Authentication Error"
-        case .authorizationError:
-            return "Authorization Error"
-        case .networkError:
-            return "Network Error"
-        case .serverError:
-            return "Server Error"
-        case .validationError:
-            return "Validation Error"
-        case .notFound:
-            return "Not Found"
-        case .offline:
-            return "No Internet Connection"
-        case .dataCorruption:
-            return "Data Error"
-        case .unknown:
-            return "Unexpected Error"
-        case .customError(let title, _, _):
-            return title
-        }
-    }
-    
-    var message: String {
-        switch self {
-        case .authenticationError(let message):
-            return message ?? "Please log in again to continue"
-        case .authorizationError(let message):
-            return message ?? "You don't have permission to access this resource"
-        case .networkError(let message):
-            return "Network error: \(message)"
-        case .serverError(let message):
-            return "Server error: \(message)"
-        case .validationError(let message, _):
-            return "Validation error: \(message)"
-        case .notFound(let message):
-            return "Not found: \(message)"
-        case .offline:
-            return "Please check your internet connection and try again"
-        case .dataCorruption(let message):
-            return "Data corruption detected: \(message)"
-        case .unknown(let message):
-            return "An unexpected error occurred: \(message)"
-        case .customError(_, let message, _):
-            return message
-        }
-    }
-    
-    var context: String? {
-        switch self {
-        case .customError(_, _, let context):
-            return context
-        default:
-            return nil
-        }
-    }
-    
-    var errorDescription: String? {
-        return message
-    }
-    
-    var recoverySuggestion: String? {
-        switch self {
-        case .authenticationError:
-            return "Try logging in again"
-        case .authorizationError:
-            return "Contact support if you believe this is an error"
-        case .networkError, .offline:
-            return "Check your internet connection and try again"
-        case .serverError:
-            return "Please try again later"
-        case .validationError(_, let details):
-            return details?.joined(separator: ", ")
-        case .notFound:
-            return "The requested item may have been moved or deleted"
-        case .dataCorruption:
-            return "Try restarting the app or clearing app data"
-        case .unknown:
-            return "Please try again or contact support"
-        case .customError:
-            return "Please try again"
-        }
-    }
-    
-    var isAuthenticationError: Bool {
-        switch self {
-        case .authenticationError, .authorizationError:
-            return true
-        default:
-            return false
-        }
-    }
-    
-    var isNetworkError: Bool {
-        switch self {
-        case .networkError, .offline:
-            return true
-        default:
-            return false
-        }
-    }
-    
-    var analyticsName: String {
-        return id
-    }
-    
-    // MARK: - Factory Methods
-    
-    static func from(error: Error, context: String? = nil) -> AppError {
-        if let appError = error as? AppError {
-            return appError
-        }
-        
-        if let authError = error as? AuthError {
-            switch authError {
-            case .invalidCredentials:
-                return .authenticationError("Invalid credentials")
-            case .emailAlreadyExists:
-                return .validationError("Email already exists", nil)
-            case .networkError(let message):
-                return .networkError(message)
-            case .serverError(let message):
-                return .serverError(message)
-            case .validationError(let message, let details):
-                return .validationError(message, details)
-            case .keychainError(let message):
-                return .dataCorruption(message)
-            case .notAuthenticated:
-                return .authenticationError("Not authenticated")
-            case .unknown(let message):
-                return .unknown(message)
-            }
-        }
-        
-        if let apiError = error as? APIServiceError {
-            switch apiError {
-            case .invalidURL(let endpoint):
-                return .unknown("Invalid URL: \(endpoint)")
-            case .invalidResponse:
-                return .serverError("Invalid response from server")
-            case .networkError(let error):
-                return .networkError(error.localizedDescription)
-            case .encodingError(let error):
-                return .unknown("Encoding error: \(error.localizedDescription)")
-            case .decodingError(let error):
-                return .serverError("Failed to decode response: \(error.localizedDescription)")
-            case .authenticationError(let message):
-                return .authenticationError(message)
-            case .authorizationError(let message):
-                return .authorizationError(message)
-            case .notFound(let message):
-                return .notFound(message)
-            case .validationError(let message, let details):
-                return .validationError(message, details)
-            case .serverError(_, let message):
-                return .serverError(message)
-            case .httpError(_, let message):
-                return .serverError(message)
-            case .serviceUnavailable:
-                return .serverError("Service temporarily unavailable")
-            }
-        }
-        
-        if let hadithError = error as? HadithServiceError {
-            switch hadithError {
-            case .notFound(let message):
-                return .notFound(message)
-            case .networkError(let message):
-                return .networkError(message)
-            case .authenticationRequired:
-                return .authenticationError("Authentication required")
-            case .serverError(let message):
-                return .serverError(message)
-            case .validationError(let message):
-                return .validationError(message, nil)
-            case .unknown(let message):
-                return .unknown(message)
-            }
-        }
-        
-        // Handle URLError specifically
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost:
-                return .offline
-            case .timedOut:
-                return .networkError("Request timed out")
-            case .cannotFindHost, .cannotConnectToHost:
-                return .networkError("Cannot connect to server")
-            default:
-                return .networkError(urlError.localizedDescription)
-            }
-        }
-        
-        return .unknown(error.localizedDescription)
-    }
-}
-
-// MARK: - Error Presentation Helpers
-
-extension ErrorHandler {
-    /// Get appropriate system image for error type
-    func systemImage(for error: AppError) -> String {
+        // Customize based on error type
         switch error {
-        case .authenticationError, .authorizationError:
-            return "person.crop.circle.badge.exclamationmark"
-        case .networkError, .offline:
-            return "wifi.exclamationmark"
-        case .serverError:
-            return "server.rack"
-        case .validationError:
-            return "exclamationmark.triangle"
-        case .notFound:
-            return "questionmark.circle"
-        case .dataCorruption:
-            return "exclamationmark.octagon"
-        case .unknown, .customError:
-            return "exclamationmark.circle"
-        }
-    }
-    
-    /// Get appropriate color for error type
-    func errorColor(for error: AppError) -> String {
-        switch error {
-        case .authenticationError, .authorizationError:
-            return "orange"
-        case .networkError, .offline:
-            return "blue"
-        case .serverError:
-            return "red"
-        case .validationError:
-            return "yellow"
-        case .notFound:
-            return "gray"
-        case .dataCorruption:
-            return "purple"
-        case .unknown, .customError:
-            return "red"
-        }
-    }
-}
-
-// MARK: - Publisher Extensions for Error Handling
-
-extension Publisher {
-    /// Handle errors using the global error handler
-    /// - Parameters:
-    ///   - errorHandler: The error handler to use (defaults to shared instance)
-    ///   - context: Context information about where the error occurred
-    ///   - shouldDisplay: Whether to automatically display the error
-    /// - Returns: Publisher that handles errors
-    func handleErrors(
-        with errorHandler: ErrorHandler = ErrorHandler.shared,
-        context: String? = nil,
-        shouldDisplay: Bool = true
-    ) -> Publishers.HandleEvents<Self> {
-        return handleEvents(
-            receiveCompletion: { completion in
-                if case .failure(let error) = completion {
-                    errorHandler.handle(error, context: context, shouldDisplay: shouldDisplay)
-                }
+        case let apiError as APIServiceError:
+            title = "Service Error"
+            severity = apiError.isAuthenticationError ? .high : .medium
+            if apiError.isAuthenticationError {
+                actionTitle = "Log In"
+                action = { [weak self] in self?.showLoginScreen() }
             }
+            
+        case let authError as AuthError:
+            title = "Authentication Error"
+            severity = .high
+            if authError.id == "not_authenticated" {
+                actionTitle = "Log In"
+                action = { [weak self] in self?.showLoginScreen() }
+            }
+            
+        case let hadithError as HadithServiceError:
+            title = "Content Error"
+            severity = hadithError.id == "authentication_required" ? .high : .medium
+            
+        case let keychainError as KeychainError:
+            title = "Security Error"
+            severity = .high
+            message = keychainError.localizedDescription
+            
+        case is URLError:
+            title = "Network Error"
+            severity = .medium
+            actionTitle = "Retry"
+            
+        default:
+            title = "Unexpected Error"
+            severity = .low
+        }
+        
+        // Add context if provided
+        if let context = context {
+            message = "\(message)\n\nContext: \(context)"
+        }
+        
+        return DisplayableError(
+            title: title,
+            message: message,
+            severity: severity,
+            actionTitle: actionTitle,
+            action: action,
+            originalError: error
         )
     }
     
-    /// Retry with exponential backoff on network errors
-    /// - Parameters:
-    ///   - maxRetries: Maximum number of retry attempts
-    ///   - baseDelay: Base delay between retries
-    /// - Returns: Publisher that retries on network errors
-    func retryOnNetworkError(
-        maxRetries: Int = 3,
-        baseDelay: TimeInterval = 1.0
-    ) -> AnyPublisher<Output, Failure> {
-        return self.catch { error -> AnyPublisher<Output, Failure> in
-            let appError = AppError.from(error: error)
-            
-            if maxRetries > 0 && appError.isNetworkError {
-                return Just(())
-                    .delay(for: .seconds(baseDelay), scheduler: DispatchQueue.main)
-                    .flatMap { _ in
-                        self.retryOnNetworkError(
-                            maxRetries: maxRetries - 1,
-                            baseDelay: baseDelay * 2
-                        )
-                    }
-                    .eraseToAnyPublisher()
+    private func logError(_ error: DisplayableError) {
+        let timestamp = DateFormatter.logTimestamp.string(from: Date())
+        let severityIcon = error.severity.icon
+        
+        let logMessage = """
+        \(severityIcon) [\(timestamp)] \(error.title)
+        Message: \(error.message)
+        Severity: \(error.severity.rawValue)
+        Original Error: \(String(describing: error.originalError))
+        """
+        
+        if Environment.isDebug {
+            print(logMessage)
+        }
+        
+        // In production, you might want to write to a log file
+        // or send to a logging service
+        writeToLogFile(logMessage)
+    }
+    
+    private func writeToLogFile(_ message: String) {
+        guard let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return
+        }
+        
+        let logFileURL = documentsPath.appendingPathComponent("error_log.txt")
+        let timestampedMessage = message + "\n\n"
+        
+        do {
+            if FileManager.default.fileExists(atPath: logFileURL.path) {
+                let fileHandle = try FileHandle(forWritingTo: logFileURL)
+                fileHandle.seekToEndOfFile()
+                fileHandle.write(timestampedMessage.data(using: .utf8) ?? Data())
+                fileHandle.closeFile()
             } else {
-                return Fail(error: error)
-                    .eraseToAnyPublisher()
+                try timestampedMessage.write(to: logFileURL, atomically: true, encoding: .utf8)
+            }
+        } catch {
+            print("Failed to write to log file: \(error)")
+        }
+    }
+    
+    private func sendErrorToAnalytics(_ error: DisplayableError) {
+        // In a real app, you would send this to your analytics service
+        // e.g., Firebase Analytics, Mixpanel, etc.
+        
+        let analyticsData: [String: Any] = [
+            "error_title": error.title,
+            "error_message": error.message,
+            "error_severity": error.severity.rawValue,
+            "error_type": String(describing: type(of: error.originalError)),
+            "timestamp": Date().timeIntervalSince1970,
+            "app_version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "unknown",
+            "ios_version": UIDevice.current.systemVersion
+        ]
+        
+        if Environment.isDebug {
+            print("📊 Analytics: Error reported - \(analyticsData)")
+        }
+        
+        // TODO: Implement actual analytics reporting
+        // Analytics.logEvent("error_occurred", parameters: analyticsData)
+    }
+    
+    private func errorSeverity(_ error: Error) -> Int {
+        switch error {
+        case is AuthError:
+            return 3
+        case let apiError as APIServiceError:
+            return apiError.isAuthenticationError ? 3 : 2
+        case is KeychainError:
+            return 3
+        case is URLError:
+            return 2
+        default:
+            return 1
+        }
+    }
+    
+    private func isNetworkUnavailable(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost:
+                return true
+            default:
+                return false
             }
         }
-        .eraseToAnyPublisher()
+        return false
+    }
+    
+    private func showLoginScreen() {
+        // This would typically trigger navigation to the login screen
+        // Implementation depends on your navigation system (SwiftUI, UIKit, etc.)
+        NotificationCenter.default.post(name: .showLoginScreen, object: nil)
     }
 }
+
+// MARK: - DisplayableError
+
+struct DisplayableError: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+    let severity: ErrorSeverity
+    let actionTitle: String
+    let action: (() -> Void)?
+    let originalError: Error
+    
+    var shouldShowToUser: Bool {
+        return severity != .low
+    }
+}
+
+// MARK: - ErrorSeverity
+
+enum ErrorSeverity: String, CaseIterable {
+    case low = "low"
+    case medium = "medium"
+    case high = "high"
+    case critical = "critical"
+    
+    var icon: String {
+        switch self {
+        case .low:
+            return "ℹ️"
+        case .medium:
+            return "⚠️"
+        case .high:
+            return "❌"
+        case .critical:
+            return "🚨"
+        }
+    }
+    
+    var color: String {
+        switch self {
+        case .low:
+            return "blue"
+        case .medium:
+            return "orange"
+        case .high:
+            return "red"
+        case .critical:
+            return "purple"
+        }
+    }
+}
+
+// MARK: - Notification Extensions
+
+extension Notification.Name {
+    static let showLoginScreen = Notification.Name("showLoginScreen")
+    static let errorOccurred = Notification.Name("errorOccurred")
+}
+
+// MARK: - DateFormatter Extensions
+
+extension DateFormatter {
+    static let logTimestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter
+    }()
+}
+
+// MARK: - Error Recovery Helpers
+
+extension ErrorHandler {
+    /// Attempt to recover from common errors automatically
+    /// - Parameter error: The error to attempt recovery from
+    /// - Returns: True if recovery was attempted, false otherwise
+    func attemptAutomaticRecovery(from error: Error) -> Bool {
+        switch error {
+        case let apiError as APIServiceError:
+            if apiError.isAuthenticationError {
+                // Attempt token refresh
+                AuthenticationManager.shared.refreshToken()
+                    .sink(
+                        receiveCompletion: { _ in },
+                        receiveValue: { _ in
+                            self.clearError()
+                        }
+                    )
+                    .store(in: &cancellables)
+                return true
+            }
+            
+        case is URLError:
+            // For network errors, we could implement retry logic
+            // This is just a placeholder
+            return false
+            
+        default:
+            return false
+        }
+        
+        return false
+    }
+    
+    /// Get error statistics for debugging
+    func getErrorStatistics() -> [String: Any] {
+        // In a real implementation, you'd track error counts, types, etc.
+        return [
+            "total_errors": 0,
+            "auth_errors": 0,
+            "network_errors": 0,
+            "last_error_time": Date()
+        ]
+    }
+}
+
+// MARK: - SwiftUI Integration Helpers
+
+#if canImport(SwiftUI)
+import SwiftUI
+
+extension ErrorHandler {
+    /// Create an Alert from the current error for SwiftUI
+    func createAlert() -> Alert {
+        guard let error = currentError else {
+            return Alert(title: Text("Unknown Error"))
+        }
+        
+        if let action = error.action {
+            return Alert(
+                title: Text(error.title),
+                message: Text(error.message),
+                primaryButton: .default(Text(error.actionTitle), action: action),
+                secondaryButton: .cancel()
+            )
+        } else {
+            return Alert(
+                title: Text(error.title),
+                message: Text(error.message),
+                dismissButton: .default(Text(error.actionTitle)) {
+                    self.clearError()
+                }
+            )
+        }
+    }
+}
+#endif
