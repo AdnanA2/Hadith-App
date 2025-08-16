@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: hadith_postgres
+    environment:
+      POSTGRES_DB: hadith_db
+      POSTGRES_USER: hadith_user
+      POSTGRES_PASSWORD: hadith_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/postgresql_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - hadith_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hadith_user -d hadith_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (optional - for caching)
+  redis:
+    image: redis:7-alpine
+    container_name: hadith_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - hadith_network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # Backend API
+  api:
+    build: .
+    container_name: hadith_api
+    environment:
+      DATABASE_URL: postgresql://hadith_user:hadith_password@postgres:5432/hadith_db
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: your-production-secret-key-change-this
+      ENVIRONMENT: production
+      DEBUG: false
+    ports:
+      - "8000:8000"
+    networks:
+      - hadith_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data:ro  # Mount data directory as read-only
+    restart: unless-stopped
+
+  # Nginx (reverse proxy)
+  nginx:
+    image: nginx:alpine
+    container_name: hadith_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # SSL certificates
+    networks:
+      - hadith_network
+    depends_on:
+      - api
+    restart: unless-stopped
+
+networks:
+  hadith_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
