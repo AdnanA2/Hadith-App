@@ -4,7 +4,7 @@
 
 ## 1. Overview
 **Product:** Hadith of the Day  
-**Platform:** iOS (MVP), cross-platform support (future)  
+**Platform:** iOS (MVP)
 **Target Users:** English-speaking American Muslims seeking daily authentic hadith reminders with clarity and simplicity.  
 **Core Value:** Provide one authentic hadith per day (Arabic + English) with option to explore and share more hadiths.  
 

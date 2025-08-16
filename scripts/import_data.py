@@ -161,7 +161,7 @@ class HadithDataImporter:
                 self.conn.execute("""
                     INSERT OR REPLACE INTO hadiths 
                     (id, collection_id, chapter_id, hadith_number, arabic_text, english_text, 
-                     narrator, grade, grade_details, references, tags, source_url)
+                     narrator, grade, grade_details, refs, tags, source_url)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     hadith['id'],

@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS hadiths (
     narrator TEXT NOT NULL,
     grade TEXT NOT NULL CHECK (grade IN ('Sahih', 'Hasan', 'Da''if', 'Mawdu''', 'Unknown')),
     grade_details TEXT,
-    references TEXT, -- JSON string for references
+    refs TEXT, -- JSON string for references
     tags TEXT, -- JSON string for tags array
     source_url TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -144,7 +144,7 @@ SELECT
     h.narrator,
     h.grade,
     h.grade_details,
-    h.references,
+    h.refs,
     h.tags,
     h.source_url,
     c.name_en as collection_name_en,
