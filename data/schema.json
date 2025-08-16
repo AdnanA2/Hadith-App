@@ -1,0 +1,195 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hadith Dataset Schema",
+  "description": "Schema for normalized hadith data in the Hadith of the Day app",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Dataset version"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source of the dataset (e.g., Sunnah.com API)"
+        },
+        "collection_name": {
+          "type": "string",
+          "description": "Name of the hadith collection"
+        },
+        "total_hadiths": {
+          "type": "integer",
+          "description": "Total number of hadiths in the collection"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        },
+        "license": {
+          "type": "string",
+          "description": "License information"
+        }
+      },
+      "required": ["version", "source", "collection_name", "total_hadiths", "last_updated"]
+    },
+    "collections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique collection identifier"
+          },
+          "name_en": {
+            "type": "string",
+            "description": "Collection name in English"
+          },
+          "name_ar": {
+            "type": "string",
+            "description": "Collection name in Arabic"
+          },
+          "description_en": {
+            "type": "string",
+            "description": "Collection description in English"
+          },
+          "description_ar": {
+            "type": "string",
+            "description": "Collection description in Arabic"
+          }
+        },
+        "required": ["id", "name_en", "name_ar"]
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique chapter identifier"
+          },
+          "collection_id": {
+            "type": "string",
+            "description": "Reference to parent collection"
+          },
+          "chapter_number": {
+            "type": "integer",
+            "description": "Chapter number within the collection"
+          },
+          "title_en": {
+            "type": "string",
+            "description": "Chapter title in English"
+          },
+          "title_ar": {
+            "type": "string",
+            "description": "Chapter title in Arabic"
+          },
+          "description_en": {
+            "type": "string",
+            "description": "Chapter description in English"
+          },
+          "description_ar": {
+            "type": "string",
+            "description": "Chapter description in Arabic"
+          }
+        },
+        "required": ["id", "collection_id", "chapter_number", "title_en", "title_ar"]
+      }
+    },
+    "hadiths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique hadith identifier (e.g., 'riyad-001')",
+            "pattern": "^[a-z]+-[0-9]+$"
+          },
+          "collection_id": {
+            "type": "string",
+            "description": "Reference to parent collection"
+          },
+          "chapter_id": {
+            "type": "string",
+            "description": "Reference to parent chapter"
+          },
+          "hadith_number": {
+            "type": "integer",
+            "description": "Hadith number within the collection"
+          },
+          "arabic_text": {
+            "type": "string",
+            "description": "Original Arabic text of the hadith"
+          },
+          "english_text": {
+            "type": "string",
+            "description": "English translation of the hadith"
+          },
+          "narrator": {
+            "type": "string",
+            "description": "Primary narrator of the hadith"
+          },
+          "grade": {
+            "type": "string",
+            "enum": ["Sahih", "Hasan", "Da'if", "Mawdu'", "Unknown"],
+            "description": "Authenticity grading of the hadith"
+          },
+          "grade_details": {
+            "type": "string",
+            "description": "Additional grading details or scholar opinions"
+          },
+          "references": {
+            "type": "object",
+            "description": "References to other hadith collections",
+            "properties": {
+              "bukhari": {
+                "type": "string",
+                "description": "Sahih Bukhari reference"
+              },
+              "muslim": {
+                "type": "string",
+                "description": "Sahih Muslim reference"
+              },
+              "abu_dawud": {
+                "type": "string",
+                "description": "Sunan Abu Dawud reference"
+              },
+              "tirmidhi": {
+                "type": "string",
+                "description": "Jami' at-Tirmidhi reference"
+              },
+              "nasai": {
+                "type": "string",
+                "description": "Sunan an-Nasa'i reference"
+              },
+              "ibn_majah": {
+                "type": "string",
+                "description": "Sunan Ibn Majah reference"
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Thematic tags for categorization"
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to the source of this hadith"
+          }
+        },
+        "required": ["id", "collection_id", "chapter_id", "hadith_number", "arabic_text", "english_text", "narrator", "grade"]
+      }
+    }
+  },
+  "required": ["metadata", "collections", "chapters", "hadiths"]
+}

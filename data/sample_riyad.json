@@ -1,0 +1,92 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "source": "Sunnah.com API",
+    "collection_name": "Riyad us-Saliheen",
+    "total_hadiths": 1896,
+    "last_updated": "2024-01-15T10:30:00Z",
+    "license": "Open for non-commercial use with attribution"
+  },
+  "collections": [
+    {
+      "id": "riyad-us-saliheen",
+      "name_en": "Riyad us-Saliheen",
+      "name_ar": "رياض الصالحين",
+      "description_en": "The Gardens of the Righteous - A collection of authentic hadiths compiled by Imam an-Nawawi",
+      "description_ar": "رياض الصالحين من كلام سيد المرسلين - مجموعة من الأحاديث الصحيحة جمعها الإمام النووي"
+    }
+  ],
+  "chapters": [
+    {
+      "id": "riyad-ch-001",
+      "collection_id": "riyad-us-saliheen",
+      "chapter_number": 1,
+      "title_en": "Sincerity and the Intention",
+      "title_ar": "باب الإخلاص وإحضار النية",
+      "description_en": "Chapter on sincerity and bringing forth the intention in all acts of worship",
+      "description_ar": "باب الإخلاص وإحضار النية في جميع الأعمال والأقوال والأحوال البارزة والخفية"
+    },
+    {
+      "id": "riyad-ch-002",
+      "collection_id": "riyad-us-saliheen",
+      "chapter_number": 2,
+      "title_en": "Repentance",
+      "title_ar": "باب التوبة",
+      "description_en": "Chapter on repentance and seeking forgiveness from Allah",
+      "description_ar": "باب التوبة"
+    }
+  ],
+  "hadiths": [
+    {
+      "id": "riyad-001",
+      "collection_id": "riyad-us-saliheen",
+      "chapter_id": "riyad-ch-001",
+      "hadith_number": 1,
+      "arabic_text": "عن أمير المؤمنين أبي حفص عمر بن الخطاب رضي الله عنه قال: سمعت رسول الله صلى الله عليه وسلم يقول: إنما الأعمال بالنيات، وإنما لكل امرئ ما نوى، فمن كانت هجرته إلى الله ورسوله فهجرته إلى الله ورسوله، ومن كانت هجرته لدنيا يصيبها أو امرأة ينكحها فهجرته إلى ما هاجر إليه. متفق عليه",
+      "english_text": "Amirul-Mu'minin (the Commander of the Faithful), Abu Hafs 'Umar bin Al-Khattab (May Allah be pleased with him) said: I heard the Messenger of Allah (ﷺ) saying: \"The deeds are considered by the intentions, and a person will get the reward according to his intention. So whoever emigrated for Allah and His Messenger, his emigration will be for Allah and His Messenger; and whoever emigrated for worldly benefits or for a woman to marry, his emigration will be for what he emigrated for.\" [Al-Bukhari and Muslim]",
+      "narrator": "Umar ibn al-Khattab",
+      "grade": "Sahih",
+      "grade_details": "Agreed upon by Al-Bukhari and Muslim - highest level of authenticity",
+      "references": {
+        "bukhari": "1",
+        "muslim": "1907"
+      },
+      "tags": ["intention", "sincerity", "deeds", "migration", "reward"],
+      "source_url": "https://sunnah.com/riyadussalihin:1"
+    },
+    {
+      "id": "riyad-002",
+      "collection_id": "riyad-us-saliheen",
+      "chapter_id": "riyad-ch-001",
+      "hadith_number": 2,
+      "arabic_text": "وعن أم المؤمنين أم عبد الله عائشة رضي الله عنها قالت: قال رسول الله صلى الله عليه وسلم: من أحدث في أمرنا هذا ما ليس منه فهو رد. متفق عليه",
+      "english_text": "Mother of the Believers, Umm 'Abdullah 'Aishah (May Allah be pleased with her) reported: The Messenger of Allah (ﷺ) said, \"He who innovates something in this matter of ours (i.e., Islam) that is not of it will have it rejected (by Allah).\" [Al-Bukhari and Muslim]",
+      "narrator": "Aishah bint Abi Bakr",
+      "grade": "Sahih",
+      "grade_details": "Agreed upon by Al-Bukhari and Muslim",
+      "references": {
+        "bukhari": "2697",
+        "muslim": "1718"
+      },
+      "tags": ["innovation", "bidah", "rejection", "islam", "authenticity"],
+      "source_url": "https://sunnah.com/riyadussalihin:2"
+    },
+    {
+      "id": "riyad-003",
+      "collection_id": "riyad-us-saliheen",
+      "chapter_id": "riyad-ch-002",
+      "hadith_number": 3,
+      "arabic_text": "عن أبي عبد الرحمن عبد الله بن عمر بن الخطاب رضي الله عنهما قال: سمعت رسول الله صلى الله عليه وسلم يقول: بني الإسلام على خمس: شهادة أن لا إله إلا الله وأن محمدا رسول الله، وإقام الصلاة، وإيتاء الزكاة، وحج البيت، وصوم رمضان. متفق عليه",
+      "english_text": "Abu 'Abdur-Rahman 'Abdullah bin 'Umar bin Al-Khattab (May Allah be pleased with them) reported: I heard the Messenger of Allah (ﷺ) saying: \"Islam is built on five (pillars): testifying that none has the right to be worshipped but Allah and that Muhammad (ﷺ) is the Messenger of Allah, performing the prayers, paying the Zakat, making the pilgrimage to the House, and fasting in Ramadan.\" [Al-Bukhari and Muslim]",
+      "narrator": "Abdullah ibn Umar",
+      "grade": "Sahih",
+      "grade_details": "Agreed upon by Al-Bukhari and Muslim",
+      "references": {
+        "bukhari": "8",
+        "muslim": "16"
+      },
+      "tags": ["five pillars", "islam", "shahada", "prayer", "zakat", "hajj", "fasting"],
+      "source_url": "https://sunnah.com/riyadussalihin:3"
+    }
+  ]
+}
